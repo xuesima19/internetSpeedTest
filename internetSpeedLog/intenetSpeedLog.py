@@ -3,32 +3,6 @@ import time
 import pickle
 import os
 
-def pick_best_server_by_latency(max_candidates=20):
-    st = speedtest.Speedtest(secure=True, timeout=20)
-    # Closest by geography
-    candidates = st.get_closest_servers()[:max_candidates]
-
-    best = None
-    for s in candidates:
-        try:
-            st.get_servers([s['id']])         # restrict to this server
-            chosen = st.get_best_server()      # pings and returns server dict
-            latency = chosen.get('latency', None)
-            if latency is None:
-                continue
-            if best is None or latency < best['latency']:
-                best = {'id': chosen['id'],
-                        'sponsor': chosen['sponsor'],
-                        'name': chosen['name'],
-                        'country': chosen.get('country', ''),
-                        'host': chosen.get('host', ''),
-                        'latency': latency}
-        except speedtest.SpeedtestException:
-            continue
-
-    return best['id']  # dict with 'id', 'sponsor', 'name', 'latency', etc.
-
-
 def best_by_throughput(top_n=3):
     st = speedtest.Speedtest(secure=True, timeout=20)
     # Rank by latency first
@@ -60,7 +34,7 @@ def best_by_throughput(top_n=3):
     # Pick best by download throughput
     if results:
         srv, down, up = max(results, key=lambda x: x[1])
-        return {'server': srv, 'download_bps': down, 'upload_bps': up}
+        return srv['id']
     return None
 
 def test_server(server_id):
@@ -82,6 +56,9 @@ def run_speed_test(Server_ID):
     try:
         print(f"Finding best server for {Server_ID}...")
         try:
+            if Server_ID is None:
+                raise speedtest.SpeedtestException("No Server ID currently available")
+            
             st = speedtest.Speedtest(secure=True, timeout=20)
 
             st.get_servers([Server_ID])
@@ -162,9 +139,22 @@ def save_results(results):
 
 if __name__ == "__main__":
     try:
+        interval = 60*30 # 30 minutes
         while True:
-            Server_ID = pick_best_server_by_latency()
+            start_time = time.time()
+            
+            print("current time: ", time.strftime('%Y-%m-%d %H:%M:%S', time.localtime()))
+            print("Finding server with best latency...")
+            for i in range(3):
+                Server_ID = best_by_throughput()
+                if Server_ID is not None:
+                    break
+                time.sleep(10)
             run_speed_test(Server_ID)
-            time.sleep(60*30) # 30 minutes
+            print("Speed test completed.")
+            
+            next_run = start_time + interval
+            delay = max(0, next_run - time.time())
+            time.sleep(delay)
     except KeyboardInterrupt:
         print("Stopped by user.")
